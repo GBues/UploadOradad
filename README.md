@@ -55,6 +55,10 @@ Script de génération et d'envoi des Audits ORADAD.
   	v0.9,<br/>
    	- Modification des exemples<br/>
     	- Version Beta soumise sur OSMOSE<br/>
+         v0.9.1,<br/>
+        - Suite retours du CHIC CM, Merci Thierry Agon<br/>
+        - Pour les DC en 2012R2, ajout la ligne suivante  à la fonction BuildAndInvokeWebRequest pour forcer le TLS1.2 : [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12<br/>
+        - Gestion du cas ou la fonctionnalité IE est supprimé du DC, on ajoute du commutateur -UseBasicParsing à l’appel Invoke-WebRequest<br/>
      
 .NOTES<br/>
 	- Un log est généré dans $ORADADInstallPath<br/>
