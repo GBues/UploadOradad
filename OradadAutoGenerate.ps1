@@ -50,6 +50,10 @@
     v0.9,
         - Modification des exemples
         - Version Beta soumise sur OSMOSE
+    v0.9.1,
+        - Suite retours du CHIC CM, Merci Thierry Agon
+        - Pour les DC en 2012R2, ajout la ligne suivante  à la fonction BuildAndInvokeWebRequest pour forcer le TLS1.2 : [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        - Gestion du cas ou la fonctionnalité IE est supprimé du DC, on ajoute du commutateur -UseBasicParsing à l’appel Invoke-WebRequest
 .NOTES
 	- Un log est généré dans $ORADADInstallPath
     - https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/invoke-webrequest?view=powershell-7.4
@@ -130,9 +134,12 @@ Function getHeaders($user, $password) {
 
 
 Function BuildAndInvokeWebRequest($url, $useProxy, $proxy, $useDefaultcredential, $proxyuser, $proxyPassword, $basicAuthUser, $basicAuthPassword, $outFile) {
+        
+        #[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        #v0.9.1 Si DC en 2012R2 forcer TLS1.2, Merci Tierry Agon CHIC CM, non activé par défaut ;)
 
-
-        $command = "Invoke-WebRequest -Uri `$url "
+        $command = "Invoke-WebRequest -Uri `$url -UseBasicParsing "
+        #v0.9.1 -UseBasicParsing : permet de fonctionner Si la fonctionnalité IE avait été supprimé du DC, Merci Tierry Agon CHIC CM
 
         if($useProxy) {
             if($useDefaultcredential) {
