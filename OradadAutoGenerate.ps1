@@ -95,7 +95,6 @@ $UseProxy = $True
 
 #Infos du proxy
 $PROXY           = "http://proxy.contoso.com:8080"
-$PROXY           = "http://proxy-ght.chiva.local:8080"
 
 #Si le Proxy gère l'authentification intégrée mettre à $True
 $ProxyUseIntegratedAuthentForCurrentUser = $True
