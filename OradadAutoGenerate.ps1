@@ -317,7 +317,7 @@ if($generateAndUpload) {
             $content.Add($fileContent, $CLUBSSIFieldName, $fileName)
       
 
-            #$result = $client.PostAsync($CLUBSSIUploadUrl, $content).Result
+            $result = $client.PostAsync($CLUBSSIUploadUrl, $content).Result
             $result.EnsureSuccessStatusCode()
 
             Out-File -FilePath "$lastMLAForDomain.isSend"
