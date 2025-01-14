@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
 	Ce script permet de gérer ORADAD et l'envoi/réception des fichiers vers l'ANSSI
 
@@ -6,25 +6,24 @@
     Nom du domaine, pour filtrer les mla envoyés à l'ANSSI.
 .PARAMETER generateAndUpload (Optionel)
     Booléen Génère le mla et l'envoi sur le site de l'ANSSI
-.PARAMETER DownLoadResults (Optionel)
-    Booléen mettre à 1 pour télécharger les résultats sur le site de l'ANSSI. Parcours les fichiers .isSend dans le dossier d'installion d'ORADAD
 .PARAMETER UpdateORADAD (Optionel)
     Booléen Télécharge la dernière version d'ORADAD (avant de lancer la génération si generateAndUpload est égalemet à 1)
 
 .EXAMPLE
     Mettre à jour ORADAD depuis le GITHUB ANSSI, générer le MLA et l'envoyer à l'ANSSI pour le domaine contoso.com:
-    powershell.exe -command "<path>\OradadAutoGenerate.ps1" -UpdateORADAD 1 -generateAndUpload 1 -domain contoso.com
+    powershell.exe -command "<path>\OradadAutoGenerate.ps1" -UpdateORADAD -generateAndUpload -domain contoso.com
 .EXAMPLE
     Utiliser ORADAD installé dans c:\temp\oradad et l'envoyer à l'ANSSI pour le domaine contoso.com
-    powershell.exe -command "<path>\OradadAutoGenerate.ps1" -generateAndUpload 1 -domain contoso.com
-.EXAMPLE
-    Récupérer les fichiers .zed des rapports envoyés (à executer le lendemain par exemple)
-    powershell.exe -command "<path>\OradadAutoGenerate.ps1" -DownLoadResults 1 -domain contoso.com
+    powershell.exe -command "<path>\OradadAutoGenerate.ps1" -generateAndUpload -domain contoso.com
+
 
 .VERSION
 	v0.0, 27/03/2024 (UPDATE THE VERSION VARIABLE BELOW)
     v0.5, 29/03/2024 (UPDATE THE VERSION VARIABLE BELOW)
     v0.9, 03/05/2024 (UPDATE THE VERSION VARIABLE BELOW)
+    v0.9.1, 30/09/2024 (UPDATE THE VERSION VARIABLE BELOW)
+    v1.0, 20/12/2024 (UPDATE THE VERSION VARIABLE BELOW)
+    v1.1, 06/01/2025 (UPDATE THE VERSION VARIABLE BELOW)
 	
 .AUTHOR
 	Guillaume Bues
@@ -33,11 +32,10 @@
     Ce script se compose de 3 parties :
 	- MAJ ORADAD depuis le Github de l'ANSSI !!! Risque de perte des vos fichiers de config
 	- Génération du rapport et récuprétion du mla basé sur la date de création + nom du domaine
-    - téléchargement du .zed basé sur un témoin d'envoi
 
     Il faut modifier certains paramètres directement dans le script
 .TODO
-	
+
 .KNOWN ISSUES/BUGS
 	
 .RELEASE NOTES
@@ -52,45 +50,44 @@
         - Version Beta soumise sur OSMOSE
     v0.9.1,
         - Suite retours du CHIC CM, Merci Thierry Agon
-        - Pour les DC en 2012R2, ajout la ligne suivante  à la fonction BuildAndInvokeWebRequest pour forcer le TLS1.2 : [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        - Pour les DC en 2012R2, ajout la ligne suivante à la fonction BuildAndInvokeWebRequest pour forcer le TLS1.2 : [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12, à décommenter à la main
         - Gestion du cas ou la fonctionnalité IE est supprimé du DC, on ajoute du commutateur -UseBasicParsing à l’appel Invoke-WebRequest
+    v1.0,
+        - Gestion du nouveau système de Token du nouveau site club-SSI
+        - Suppression de la fonction de téléchargement suite à la dispo des rapports sur le nouveau site et nouveau fonctionnement
+    v1.1,
+        - Ajout du parametre --force pour gérer l'obsolence potentielle de l'EXE oradad (ORADAD autoteste son "age", si pas de version publiée sir le GITHUB on est sur un cas de blocage)
+        - Utilisation d'un switch pour les paramètres generateAndUpload et UpdateORADAD
+        - possibilité d'utiliser un tableau de domaines
 .NOTES
 	- Un log est généré dans $ORADADInstallPath
     - https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/invoke-webrequest?view=powershell-7.4
+    - https://github.com/ANSSI-FR/ORADAD
 #>
 
 
 
-param(  [boolean] $DownLoadResults , 
-        [boolean] $UpdateORADAD , 
-        [boolean] $generateAndUpload ,
-        [Parameter(mandatory=$True)] [string] $domain 
+param(  [switch] $UpdateORADAD , 
+        [switch] $generateAndUpload ,
+        [Parameter(mandatory=$True)] [string] $ORADADInstallPath ,
+        [Parameter(mandatory=$True)] [string[]] $domain 
 ) 
 
-#################################################################
-# Infos ORADAD
-
-#ORADADInstallPath : Chemin dans lequel sont présents les executables ORADAD
-$ORADADInstallPath = "c:\temp\Oradad\"
-
-#ORADADMLADomain : le domaine pour filtrer les mla
-$ORADADMLADomain   = $domain
 
 
 ##################################################################
 # Infos Club SSI
+$CLUBSSI_SESSION_GUID = ""
+$CLUBSSI_SESSION_UploadToken = ""
 
-$CLUBSSIUser                 = "user@domain.fr"
-$CLUBSSIPass                 = "LeMotDePasse"
 
 #Ne pas modifier : adresse d'upload cote ANSSI
-$CLUBSSIUploadUrl            = "https://club.ssi.gouv.fr/post_oradad.mp"
+$CLUBSSIUploadUrl            = "https://club.ssi.gouv.fr/upload.mp?ZKBEID=$($CLUBSSI_SESSION_GUID)"
 #Ne pas modifier : nom du champ d'upload cote ANSSI
 $CLUBSSIFieldName            = "file"
 
 #TimeOut d'upload du fichier
 $CLUBSSIUploadTimeOutMinutes = 10
-
 
 ##################################################################
 #Pour utiliser un proxy positionner à $True
@@ -98,32 +95,54 @@ $UseProxy = $True
 
 #Infos du proxy
 $PROXY           = "http://proxy.contoso.com:8080"
+$PROXY           = "http://proxy-ght.chiva.local:8080"
 
 #Si le Proxy gère l'authentification intégrée mettre à $True
 $ProxyUseIntegratedAuthentForCurrentUser = $True
 
 # Ne positionner que si ProxyUseIntegratedAuthentForCurrentUser est à $False
-$PROXYUser       = "domain\user"
-$PROXYPassword    = "C'estMieuxEnAuthentIntégrée!"
+$PROXYUser       = ""
+$PROXYPassword    = ""
 
 
 ##################################################################
 
 
-# Démarrage du Log
-Start-Transcript -Path "$($ORADADInstallPath)\OradadAutoGenerate_$($domain).log"
+function btoa {
+    #Fonction traduite du javascript depuis le site club-ssi, convertion de binaire en ascii
+    param (
+        [string]$chaine
+    )
 
-Write-Output "#########################################"
-Write-Output "Paramètres :"
-Write-Output "DownLoadResults   : $($DownLoadResults)"
-Write-Output "UpdateORADAD      : $($UpdateORADAD)"
-Write-Output "generateAndUpload : $($generateAndUpload)"
-Write-Output "domain            : $($domain)"
-Write-Output "#########################################"
+    # Base64 Alphabet
+    $alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/="
+    $output = ""
+    $index = 0
 
-Function getHeaders($user, $password) {
-        $pair = "$($user):$($password)"
-        $encodedCreds = [System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes($pair))
+
+    # Encodage par blocs de 4 octets
+    while ($index -lt $chaine.Length) {
+        
+        [int]$char1 = (([char]$chaine[$index++]))# -shl 16)
+        [int]$char2 = (([char]$chaine[$index++]))# -shl 8)
+        [int]$char3 = (([char]$chaine[$index++]))# -shr 18)
+
+        $combined = ($char1 -shl 16) -bor ($char2 -shl 8) -bor $char3
+
+        $output += $alphabet[($combined -shr 18) -band 63]
+        $output += $alphabet[($combined -shr 12) -band 63]
+        $output += if ($index -le $chaine.Length + 1) { $alphabet[($combined -shr 6) -band 63] } else { "=" }
+        $output += if ($index -le $chaine.Length) { $alphabet[$combined -band 63] } else { "=" }
+    }
+    $output
+
+    return $output
+}
+
+
+Function getHeaders($user, $password) { #TODO enlever les paramètres pour l'ancien portail ANSSI
+        #Nouvelle Version du portail
+        $encodedCreds = btoa "$($CLUBSSI_SESSION_GUID):$($CLUBSSI_SESSION_UploadToken)"
 
         $Headers = @{
             Authorization = "Basic $encodedCreds"
@@ -139,7 +158,7 @@ Function BuildAndInvokeWebRequest($url, $useProxy, $proxy, $useDefaultcredential
         #v0.9.1 Si DC en 2012R2 forcer TLS1.2, Merci Tierry Agon CHIC CM, non activé par défaut ;)
 
         $command = "Invoke-WebRequest -Uri `$url -UseBasicParsing "
-        #v0.9.1 -UseBasicParsing : permet de fonctionner Si la fonctionnalité IE avait été supprimé du DC, Merci Tierry Agon CHIC CM
+        #v0.9.1 -UseBasicParsing : permet de fonctionner Si la fonctionnalité IE a été supprimé, Merci Tierry Agon CHIC CM
 
         if($useProxy) {
             if($useDefaultcredential) {
@@ -163,31 +182,20 @@ Function BuildAndInvokeWebRequest($url, $useProxy, $proxy, $useDefaultcredential
         }
 
         return Invoke-Expression $command
-
 }
 
+Start-Transcript -Path "$($ORADADInstallPath)\OradadAutoGenerate.log"
 
-
-if($DownLoadResults) {
-    $fichiersEnvoyes = Get-ChildItem -Path "$($ORADADInstallPath)\$($ORADADMLADomain)*.isSend"
-
-    foreach($fichier in $fichiersEnvoyes) {
-    $fichier
-        $zedFile = $fichier.Name.Replace(".mla.isSend",".zed")
-        $destFile = $fichier.FullName.Replace(".mla.isSend",".zed")
-        $temoinReceivedFile = $fichier.FullName.Replace(".isSend",".isReceived")
-        $downloadZed = "https://club.ssi.gouv.fr/download/$zedFile"
-
-        BuildAndInvokeWebRequest -url $downloadZed  -useProxy $UseProxy -proxy $PROXY -useDefaultcredential $ProxyUseIntegratedAuthentForCurrentUser -basicAuthUser $CLUBSSIUser -basicAuthPassword $CLUBSSIPass -proxyuser $PROXYUser -proxyPassword $PROXYPassword -outFile $destFile
-
-        if(Test-Path $destFile) {
-            Rename-Item -Path $fichier -NewName $temoinReceivedFile
-        }
-    }
-}
+Write-Output "#########################################"
+Write-Output "Paramètres :"
+Write-Output "UpdateORADAD      : $($UpdateORADAD)"
+Write-Output "generateAndUpload : $($generateAndUpload)"
+Write-Output "domain            : $($domain)"
+Write-Output "#########################################"
 
 
 if($UpdateORADAD) {
+
     #Récupération de la dernière version sur GitHub
 
     $repo = "ANSSI-FR/ORADAD"
@@ -195,8 +203,7 @@ if($UpdateORADAD) {
 
     $releases = "https://api.github.com/repos/$repo/releases"
 
-    #$tag = ((BuildAndInvokeWebRequest -url $releases -useProxy $UseProxy -proxy $PROXY -useDefaultcredential $ProxyUseIntegratedAuthentForCurrentUser -basicAuthUser $CLUBSSIUser -basicAuthPassword $CLUBSSIPass -proxyuser $PROXYUser -proxyPassword $PROXYPassword)| ConvertFrom-Json)[0].tag_name
-    $response = BuildAndInvokeWebRequest -url $releases -useProxy $UseProxy -proxy $PROXY -useDefaultcredential $ProxyUseIntegratedAuthentForCurrentUser -basicAuthUser $CLUBSSIUser -basicAuthPassword $CLUBSSIPass -proxyuser $PROXYUser -proxyPassword $PROXYPassword
+    $response = BuildAndInvokeWebRequest -url $releases -useProxy $UseProxy -proxy $PROXY -useDefaultcredential $ProxyUseIntegratedAuthentForCurrentUser -proxyuser $PROXYUser -proxyPassword $PROXYPassword
     $tag = ((ConvertFrom-Json $([String]::new($response.Content)))[0]).tag_name
 
     Write-Output "Dernière release : $tag"
@@ -214,7 +221,7 @@ if($UpdateORADAD) {
 
         Write-Output "Téléchargement dernière release"
         Try {
-        BuildAndInvokeWebRequest -url $download -outFile $zip -useProxy $UseProxy -proxy $PROXY -useDefaultcredential $ProxyUseIntegratedAuthentForCurrentUser -basicAuthUser $CLUBSSIUser -basicAuthPassword $CLUBSSIPass -proxyuser $PROXYUser -proxyPassword $PROXYPassword
+        BuildAndInvokeWebRequest -url $download -outFile $zip -useProxy $UseProxy -proxy $PROXY -useDefaultcredential $ProxyUseIntegratedAuthentForCurrentUser -proxyuser $PROXYUser -proxyPassword $PROXYPassword
         
         Write-Output "Extraction dernière release"
         Expand-Archive $zip -DestinationPath $dir -Force
@@ -238,83 +245,97 @@ if($UpdateORADAD) {
 
     $pathORADAD = $ORADADInstallPath
 } else {
+    #Si on ne mets pas à jour in utilise le $ORADADInstallPath comme chemin
     $pathORADAD = $ORADADInstallPath
 }
 
 
 if($generateAndUpload) {
 
-    Write-Output "Lancement du process ORADAD: $($pathORADAD)\ORADAD.exe"
-    if(Test-Path -Path "$($pathORADAD)\ORADAD.exe") {
-        $processORADAD = Start-Process -FilePath "$pathORADAD\ORADAD.exe" -WorkingDirectory $pathORADAD -PassThru -Wait
-    } else {
-        Write-Output "Erreur : $($pathORADAD)\ORADAD.exe n'est pas accessible"
-        exit 1
-    }
+    foreach($currentDom in $domain) {
 
-    #TODO vérifier les droits d'écriture pour le .mla
+        Write-Output "#########################################"
+        Write-Output "Génération pour le domaine : $($currentDom)"
+        Write-Output "#########################################"
 
-    if($processORADAD.ExitCode -ne 0) {
-        Write-Output "Une erreur est intervenue dans ORADAD, exitCode: $($processORADAD.ExitCode)"
-        exit 1
-    }
+        Write-Output "Lancement du process ORADAD: $($pathORADAD)\ORADAD.exe"
+        if(Test-Path -Path "$($pathORADAD)\ORADAD.exe") {
+            $processORADAD = Start-Process -FilePath "$pathORADAD\ORADAD.exe" -ArgumentList "--force" -WorkingDirectory $pathORADAD -PassThru -Wait
+        } else {
+            Write-Output "Erreur : $($pathORADAD)\ORADAD.exe n'est pas accessible"
+            exit 1
+        }
+
+        #TODO vérifier les droits d'écriture pour le .mla
+    
+        if($processORADAD.ExitCode -ne 0) {
+            Write-Output "Une erreur est intervenue dans ORADAD, exitCode: $($processORADAD.ExitCode)"
+            exit 1
+        }
 
     
-    $lastMLAForDomain = Get-ChildItem -Path "$($pathORADAD)\$($ORADADMLADomain)_*.mla" | sort LastWriteTime | select -last 1
+        $lastMLAForDomain = Get-ChildItem -Path "$($pathORADAD)\$($currentDom)_*.mla" | sort LastWriteTime | select -last 1
 
-    write-output "Fichier généré : $lastMLAForDomain"
+        write-output "Fichier généré : $lastMLAForDomain"
 
-    Try {
-        Add-Type -AssemblyName 'System.Net.Http'
+        Write-Output "#########################################"
+        Write-Output "Upload pour le domaine : $($currentDom)"
+        Write-Output "#########################################"
 
-        $pair = "$($CLUBSSIUser):$($CLUBSSIPass)"
-        $encodedCreds = [System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes($pair))
+        Try {
+            Add-Type -AssemblyName 'System.Net.Http'
 
-        $httpClientHandler = New-Object System.Net.Http.HttpClientHandler
+            $encodedCreds = btoa "$($CLUBSSI_SESSION_GUID):$($CLUBSSI_SESSION_UploadToken)"
+            $httpClientHandler = New-Object System.Net.Http.HttpClientHandler
     
-        if($UseProxy) {
-            $httpClientHandler.UseProxy = $UseProxy;
-            $WebProxy = New-Object System.Net.WebProxy($PROXY,$true)
-            $httpClientHandler.proxy=$webproxy
+            if($UseProxy) {
+                $httpClientHandler.UseProxy = $UseProxy;
+                $WebProxy = New-Object System.Net.WebProxy($PROXY,$true)
+                $httpClientHandler.proxy=$webproxy
 
-            if($ProxyUseIntegratedAuthentForCurrentUser) {
-                $httpClientHandler.proxy.UseDefaultCredentials = $True
-            } else {
-                $httpClientHandler.proxy.UseDefaultCredentials = $False
-                $encryptedPass = ConvertTo-SecureString $PROXYPassword -AsPlainText -Force
+                if($ProxyUseIntegratedAuthentForCurrentUser) {
+                    $httpClientHandler.proxy.UseDefaultCredentials = $True
+                } else {
+                    $httpClientHandler.proxy.UseDefaultCredentials = $False
+                    $encryptedPass = ConvertTo-SecureString $PROXYPassword -AsPlainText -Force
             
-                $httpClientHandler.proxy.Credentials = New-Object System.Net.NetworkCredential($PROXYUser, $encryptedPass)
-            }
-        } 
+                    $httpClientHandler.proxy.Credentials = New-Object System.Net.NetworkCredential($PROXYUser, $encryptedPass)
+                }
+            } 
+            $datum = [math]::Floor((Get-Date -UFormat %s)/ 1e3)
 
-        $client = New-Object System.Net.Http.HttpClient $httpClientHandler
-        $client.DefaultRequestHeaders.Authorization = New-Object System.Net.Http.Headers.AuthenticationHeaderValue("Basic", $encodedCreds);
-        $client.Timeout = New-TimeSpan -Minutes $CLUBSSIUploadTimeOutMinutes
+            $client = New-Object System.Net.Http.HttpClient $httpClientHandler
+            $client.DefaultRequestHeaders.Authorization = New-Object System.Net.Http.Headers.AuthenticationHeaderValue("Basic", $encodedCreds);
+            $client.DefaultRequestHeaders.Add("ZKBEID",$CLUBSSI_SESSION_GUID)
+            $client.DefaultRequestHeaders.Add("datum",$datum)
+            $client.DefaultRequestHeaders.Add("typeUpload",1) #.mla
+            $client.Timeout = New-TimeSpan -Minutes $CLUBSSIUploadTimeOutMinutes
 
-        $content = New-Object System.Net.Http.MultipartFormDataContent
-        $fileStream = [System.IO.File]::OpenRead($lastMLAForDomain)
-        $fileName = [System.IO.Path]::GetFileName($lastMLAForDomain)
-        $fileContent = New-Object System.Net.Http.StreamContent($fileStream)
-        $content.Add($fileContent, $CLUBSSIFieldName, $fileName)
+            $content = New-Object System.Net.Http.MultipartFormDataContent
+            $fileStream = [System.IO.File]::OpenRead($lastMLAForDomain)
+            $fileName = [System.IO.Path]::GetFileName($lastMLAForDomain)
+            $fileContent = New-Object System.Net.Http.StreamContent($fileStream)
+            $content.Add($fileContent, $CLUBSSIFieldName, $fileName)
+      
 
-        $result = $client.PostAsync($CLUBSSIUploadUrl, $content).Result
-        $result.EnsureSuccessStatusCode()
+            #$result = $client.PostAsync($CLUBSSIUploadUrl, $content).Result
+            $result.EnsureSuccessStatusCode()
 
-        Out-File -FilePath "$lastMLAForDomain.isSend"
-    }
-    Catch {
+            Out-File -FilePath "$lastMLAForDomain.isSend"
+        }
+        Catch {
     
-        Write-Output "Erreur lors de l'upload vers $CLUBSSIUploadUrl"
-        Write-Output $_
-        exit 1
-    }
-    Finally {
-        if ($client -ne $null) { $client.Dispose() }
-        if ($content -ne $null) { $content.Dispose() }
-        if ($fileStream -ne $null) { $fileStream.Dispose() }
-        if ($fileContent -ne $null) { $fileContent.Dispose() }
-    }
+            Write-Output "Erreur lors de l'upload vers $CLUBSSIUploadUrl pour $lastMLAForDomain"
+            Write-Output $_
+        }
+        Finally {
+            if ($client -ne $null) { $client.Dispose() }
+            if ($content -ne $null) { $content.Dispose() }
+            if ($fileStream -ne $null) { $fileStream.Dispose() }
+            if ($fileContent -ne $null) { $fileContent.Dispose() }
+        }
+    } #Fin foreach domain
+    
 }
-
 
 Stop-Transcript
