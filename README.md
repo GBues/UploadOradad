@@ -30,6 +30,9 @@ Script de génération et d'envoi des Audits ORADAD.
  v0.0, 27/03/2024 (UPDATE THE VERSION VARIABLE BELOW)<br/>
  v0.5, 29/03/2024 (UPDATE THE VERSION VARIABLE BELOW)<br/>
  v0.9, 03/05/2024 (UPDATE THE VERSION VARIABLE BELOW)<br/>
+ v0.9.1, 30/09/2024 (UPDATE THE VERSION VARIABLE BELOW)<br/>
+ v1.0, 20/12/2024 (UPDATE THE VERSION VARIABLE BELOW)<br/>
+ v1.1, 06/01/2025 (UPDATE THE VERSION VARIABLE BELOW)<br/>
 <br/>
 .AUTHOR<br/>
 	Guillaume Bues<br/>
@@ -59,6 +62,13 @@ Script de génération et d'envoi des Audits ORADAD.
         - Suite retours du CHIC CM, Merci Thierry Agon<br/>
         - Pour les DC en 2012R2, ajout la ligne suivante  à la fonction BuildAndInvokeWebRequest pour forcer le TLS1.2 : [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12<br/>
         - Gestion du cas ou la fonctionnalité IE est supprimé du DC, on ajoute du commutateur -UseBasicParsing à l’appel Invoke-WebRequest<br/>
+	v1.0,<br/>
+        - Gestion du nouveau système de Token du nouveau site club-SSI<br/>
+        - Suppression de la fonction de téléchargement suite à la dispo des rapports sur le nouveau site et nouveau fonctionnement<br/>
+    	v1.1,<br/>
+        - Ajout du parametre --force pour gérer l'obsolence potentielle de l'EXE oradad (ORADAD autoteste son "age", si pas de version publiée sir le GITHUB on est sur un cas de blocage)<br/>
+        - Utilisation d'un switch pour les paramètres generateAndUpload et UpdateORADAD<br/>
+        - possibilité d'utiliser un tableau de domaines<br/>
      
 .NOTES<br/>
 	- Un log est généré dans $ORADADInstallPath<br/>
